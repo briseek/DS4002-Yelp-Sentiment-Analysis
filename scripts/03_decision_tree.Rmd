@@ -1,0 +1,163 @@
+---
+title: "Decision Tree Analysis"
+author: "Ashrita Kodali, Shreya Darbha, Brianna Seekford"
+date: "2025-02-13"
+output: html_document
+---
+
+We will once again use R to conduct the decision tree analysis. In this case, the kableExtra,
+pROC, and tree package will be required to conduct the analysis and organize the results.
+We will first load in the data and select the variables that are only important (stars,
+is_open, review_count, and compound). Once selected, we will convert the is_open variable 
+into a factor variable and then balance the dataset. Once balanced, we will create the training
+and testing data set. We will train the decision tree model on the training dataset and use the training
+data set to conduct cross validation. Once the best pruned model is selected from cross validation,
+we will assess the performance of the model using the testing dataset. The results will then be summarized into
+organized tables produced using kableExtra (it is important to note that the file
+must be knitted into an HTML in order to view these figures properly).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# 1. Data Preparation
+```{r, message = FALSE, warning = FALSE}
+# decision tree
+library(tree)
+library(dplyr)
+library(pROC)
+df <- read.csv("/Users/ashik/1st Year UVA/FINAL_yelp_dataframe.csv", header = TRUE)
+set.seed(0625)
+df <- select(df, stars, is_open, review_count,
+             compound)
+df$is_open <- as.factor(df$is_open)
+
+# balancing the dataset: 
+        # need this because otherwise all predictions are that 
+        # restaurants are open when the decision tree model is built
+
+data_open = df[which(df$is_open==1),] # filtering the data into two smaller
+data_closed = df[which(df$is_open!=1),] # datasets (restaurants that are opened)
+                                      # and those that are closed
+sample1 =  sample(1:nrow(data_open),
+                 nrow(data_closed),
+                 replace=F) # randomly sampling from the data_open data set to get 
+# an even number of restaurants that are open and closed
+
+data_opened = data_open[sample1,] # filtering the rows from data_opened and 
+df <- rbind(data_opened, data_closed) # combining with data_closed to 
+# get a final dataset that has an equal number of restaurants that are openend
+# and restuarants that are closed
+
+# sampling dataset to making training and testing datasets
+sample = sample(1:nrow(df), .80*nrow(df),
+                replace=F)
+train = df[sample,]
+test = df[-sample,]
+```
+
+# 2. Baseline Decision Tree
+```{r, message = FALSE, warning = FALSE}
+tree.class.train<-tree(is_open~., data=train) # building model
+summary(tree.class.train)
+
+plot(tree.class.train) # it looks like 3 nodes are the optimal split
+text(tree.class.train, cex=0.75, pretty=0)
+```
+
+# 3. Pruning Decision Tree
+```{r, message = FALSE, warning = FALSE}
+# pruning the tree
+cv.class<-cv.tree(tree.class.train, K=10, FUN=prune.misclass) # it will
+# consider a model with 3 nodes, 2 nodes, and 1 node
+plot(cv.class$size, cv.class$dev,type='b')
+
+trees.num.class<-cv.class$size[which.min(cv.class$dev)]
+trees.num.class # 3 nodes are the best split to predict
+
+prune.class<-prune.misclass(tree.class.train, best=trees.num.class)
+summary(prune.class) # creating the best decision tree model
+# based on results from cross-validation (chosing the model that
+# leads to the smallest deviance)
+
+plot(prune.class)
+text(prune.class, cex=0.75, pretty=0)
+```
+
+# 4. Assessing Model Performance
+```{r, message = FALSE, warning = FALSE}
+
+# assessing models
+
+### confusion matrix
+pred.test <- test$is_open # making a vector of the "true values"
+tree.pred.prune <- predict(prune.class, newdata=test, type="class")
+# using the pruned decision tree model to make predictions using 
+# the testing data set information 
+
+confusion <- table(pred.test, tree.pred.prune)
+confusion #            tree.pred.prune
+                #  pred.test   0   1
+                #           0 438 379
+                #           1 250 544
+
+### precision
+precision <- confusion[2,2] / (confusion[2,2] + confusion[1,2])
+precision # Precision is 0.5893824
+
+### recall
+recall <- confusion[2,2] / (confusion[2,2] + confusion[2,1])
+recall # Recall is 0.6851385
+
+### accuracy
+accuracy <- mean(tree.pred.prune==pred.test)
+accuracy # Accuracy is 0.6095593
+
+### F1 Score
+F1 <- (2*precision*recall)/(precision + recall)
+F1 # F1 is 0.6336634
+
+### ROC Curve
+tree.preds = predict(prune.class, test, type="vector")[,2]
+roc_obj = roc(test$is_open,tree.preds,levels=rev(levels(test$is_open)))
+
+plot(roc_obj,col="blue",main="ROC Curve")
+
+auc = auc(roc_obj)
+auc # AUC is 0.6177
+```
+
+# 5. Table Formatting
+
+```{r, message = FALSE, warning = FALSE}
+library(kableExtra)
+
+# creating summary table of model performance for baseline and pruned decision 
+# tree
+numbers <- c(precision, recall, accuracy, F1, auc)
+
+df <- rbind(numbers, numbers)
+rownames(df) <- c("Baseline Decision Tree Model", "Pruned Decision Tree")
+
+kable(df, booktabs=TRUE, align = "c",
+      caption = "Summary of Decision Tree Model Performance",
+      col.names = c("Precision", "Recall", "Accuracy", "F1-Score", "AUC")) %>%
+  kable_styling(latex_options=c("striped")) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+# remaking confusion matrix into a data frame
+r1 <-  c(438, 379)
+r2 <- c(250, 544)
+
+confusion_df <- rbind(r1, r2)
+rownames(confusion_df) <- c("True Value: 0", "True Value: 1")
+
+kable(confusion_df, booktabs=TRUE, align = "c",
+      caption = "Summary of Confusion Matrix",
+      col.names = c("Pruned Value: 0", "Pruned Value: 1")) %>%
+  kable_styling(latex_options=c("striped")) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
