@@ -1,5 +1,5 @@
 # README
-# Yelp Reviews Sentiment Analysis
+## Yelp Reviews Sentiment Analysis
 
 ## Repository Contents
 This repository contains all the necessary files and scripts for conducting sentiment analysis on Yelp restaurant reviews in the city of Philadelphia, PA. The analysis aims to determine whether compound sentiment scores based on user reviews, in addition to the average star review and the number of such reviews, can help predict a restaurant’s likelihood of remaining open or closing down.
